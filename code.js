@@ -1,3 +1,5 @@
+const TELEGRAM_BOT_TOKEN = ''; //токен бота тут
+
 // Функція для налаштування вебхука
 function setWebhook() {
   const scriptUrl = ScriptApp.getService().getUrl();
@@ -53,11 +55,11 @@ function doPost(e) {
       sendMessage(userId, 'Дані успішно видалені)');
 
     } else if (message.startsWith('/delete')) {
-      sendMessage(userId, 'Введіть chatId, який потрібно видалити, у форматі -**********:');
+      sendMessage(userId, 'Введіть chatId, який потрібно видалити:');
       userProperties.setProperty('deleteMode', 'true');
 
     } else if (message.startsWith('/connect')) {
-      sendMessage(userId, 'Введіть ваш chatId у форматі -**********:');
+      sendMessage(userId, 'Введіть ваш chatId:');
       userProperties.deleteProperty('currentChatId');
       userProperties.deleteProperty('currentFormId');
 
@@ -102,7 +104,7 @@ function checkChatMember(userId, chatId) {
 
     if (result.ok && result.result.status !== 'left' && result.result.status !== 'kicked') {
       PropertiesService.getUserProperties().setProperty('currentChatId', chatId);
-      sendMessage(userId, 'Дякую! Тепер введіть ваш formId. \nFormId знаходить у посилання, як показано нижче\n https://docs.google.com/forms/d/FormId/edit:');
+      sendMessage(userId, 'Дякую! Тепер введіть ваш formId:');
     } else {
       Logger.log('User is not a member of the chat or has left/kicked: ' + JSON.stringify(result)); 
       sendMessage(userId, 'Помилка: Ви не є членом цього чату. Будь ласка, введіть правильний chatId.');
@@ -149,27 +151,27 @@ function sendMessage(chatId, text) {
 }
 
 // Функція для надсилання фотографій
- function sendPhoto(chatId, photoUrl) {
-   if (!chatId) {
-     Logger.log('chatId is empty');
-     return;
-   }
+function sendPhoto(chatId, photoUrl) {
+  if (!chatId) {
+    Logger.log('chatId is empty');
+    return;
+  }
 
-   const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`;
-   const payload = {
-     chat_id: chatId,
-     photo: photoUrl
-   };
+  const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`;
+  const payload = {
+    chat_id: chatId,
+    photo: photoUrl
+  };
 
-   const options = {
-     method: 'post',
-     contentType: 'application/json',
-     payload: JSON.stringify(payload),
-   };
+  const options = {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify(payload),
+  };
 
-   const response = UrlFetchApp.fetch(url, options);
-   Logger.log(response.getContentText());
- }
+  const response = UrlFetchApp.fetch(url, options);
+  Logger.log(response.getContentText());
+}
 
 // Функція для обробки подій форми
 function onFormSubmit(e) {
@@ -214,6 +216,15 @@ function onFormSubmit(e) {
 
   // Надсилання текстового повідомлення
   sendMessage(chatId, message);
+
+   // Надсилання посилань на фотографії
+   if (photos.length > 0) {
+     let photoMessage = '<b>Файли:</b>\n';
+     photos.forEach(photoUrl => {
+       photoMessage += `<a href="${photoUrl}">${photoUrl}</a>\n`;
+     });
+     sendMessage(chatId, photoMessage);
+   }
 }
 
 // Функція для налаштування тригерів
@@ -268,9 +279,7 @@ function deleteChat(chatId) {
   sendMessage(chatId, 'Чат та форми успішно видалені.'); 
 }
 
-// Функція для перегляду всіх прив'язок. Перевіряє конект чату до форм через властивсті користувача.
-// Або як варіант реалізації потім: то перевіряти усі прив'язки за окремим чатами, 
-// хоча ця функція і так виносить список усіх чаті та форм
+// Функція для перегляду всіх прив'язок
 function listBindings(userId) {
   const userProperties = PropertiesService.getUserProperties();
   const bindings = userProperties.getProperty('bindings') ? JSON.parse(userProperties.getProperty('bindings')) : [];
