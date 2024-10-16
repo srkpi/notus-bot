@@ -150,6 +150,10 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.chat.type == 'private':
+        await update.message.reply_text('Цю команду можна використовувати тільки в групах.')
+        return
+
     chat_id = update.message.chat_id
     if len(context.args) != 1:
         await update.message.reply_text('Для видалення форми надішли посилання на форму у форматі /delete <url>.')
@@ -174,6 +178,10 @@ async def delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def list_forms(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.chat.type == 'private':
+        await update.message.reply_text('Цю команду можна використовувати тільки в групах.')
+        return
+
     chat_id = update.message.chat_id
     forms_data[chat_id] = load_form_data(chat_id)
     if forms_data[chat_id]:
