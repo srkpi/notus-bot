@@ -120,6 +120,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text('Привіт, надішліть посилання на форму у форматі /connect <url> (посилання має закінчуватись на /edit).')
 
 
+async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        '1. Для початку роботи додайте бота в групу.\n\n'
+        '2. В групі надішліть посилання на форму у форматі /connect <url> (посилання має закінчуватись на /edit).\n\n'
+        '3. 🎉 Після цього бот надсилатиме відповіді на форму в групу.')
+
+
 async def addtogroup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.chat.type == 'private':
         keyboard = [[InlineKeyboardButton(text='Додати бота в групу', url='t.me/AnswerTestFormsABot?startgroup=botstart')]]
@@ -127,6 +134,22 @@ async def addtogroup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text('Додай бота в групу та надішли там команду /start:', reply_markup=reply_markup)
     else:
         await update.message.reply_text('Цю команду можна використовувати тільки в особистих повідомленнях.')
+
+
+async def list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.chat.type == 'private':
+        await update.message.reply_text('Цю команду можна використовувати тільки в групах.')
+        return
+
+    chat_id = update.message.chat_id
+    forms_data[chat_id] = load_form_data(chat_id)
+    if forms_data[chat_id]:
+        message = "Привʼязані форми:\n"
+        for (index, data) in enumerate(forms_data[chat_id].values()):
+            message += f"{index + 1}. https://docs.google.com/forms/d/{data['form_id']}/edit\n"
+        await update.message.reply_text(message, link_preview_options=LinkPreviewOptions(is_disabled=True))
+    else:
+        await update.message.reply_text('До цієї групи ще не привʼязано жодної форми.')
 
 
 async def connect(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -148,13 +171,6 @@ async def connect(update: Update, context: ContextTypes.DEFAULT_TYPE):
     forms_data[chat_id][form_id] = {'group_id': chat_id, 'form_id': form_id, 'sent_response_ids': load_sent_response_ids()}
     save_form_data(chat_id, chat_id, form_id, forms_data[chat_id][form_id]['sent_response_ids'])
     await update.message.reply_text(f'Форма {form_id} привʼязана до групи {chat_id}.')
-
-
-async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        '1. Для початку роботи додайте бота в групу.\n\n'
-        '2. В групі надішліть посилання на форму у форматі /connect <url> (посилання має закінчуватись на /edit).\n\n'
-        '3. 🎉 Після цього бот надсилатиме відповіді на форму в групу.')
 
 
 async def delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -183,22 +199,6 @@ async def delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f'Форма {form_id} видалена.')
     else:
         await update.message.reply_text('Ця форма не привʼязана до групи.')
-
-
-async def list_forms(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.chat.type == 'private':
-        await update.message.reply_text('Цю команду можна використовувати тільки в групах.')
-        return
-
-    chat_id = update.message.chat_id
-    forms_data[chat_id] = load_form_data(chat_id)
-    if forms_data[chat_id]:
-        message = "Привʼязані форми:\n"
-        for (index, data) in enumerate(forms_data[chat_id].values()):
-            message += f"{index + 1}. https://docs.google.com/forms/d/{data['form_id']}/edit\n"
-        await update.message.reply_text(message, link_preview_options=LinkPreviewOptions(is_disabled=True))
-    else:
-        await update.message.reply_text('До цієї групи ще не привʼязано жодної форми.')
 
 
 def get_form_responses(form_id):
@@ -324,7 +324,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("connect", connect))
     application.add_handler(CommandHandler("delete", delete))
-    application.add_handler(CommandHandler("list", list_forms))
+    application.add_handler(CommandHandler("list", list))
     application.add_handler(CommandHandler("help", help))
     application.add_handler(CommandHandler("addtogroup", addtogroup))
 
