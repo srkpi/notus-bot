@@ -44,11 +44,14 @@ start_time = datetime.now(timezone.utc)
 def get_id_from_url(url):
     pattern = r"forms/d/([a-zA-Z0-9_-]+)"
     match = re.search(pattern, url)
-    print(f'URL: {url}, match: {match.group(1)}')
     if match:
         return match.group(1)
     else:
         return None
+
+
+def get_url_from_id(form_id):
+    return f"https://docs.google.com/forms/d/{form_id}/edit"
 
 
 def load_sent_response_ids():
@@ -136,7 +139,7 @@ async def addtogroup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text('Цю команду можна використовувати тільки в особистих повідомленнях.')
 
 
-async def list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def list_forms(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.chat.type == 'private':
         await update.message.reply_text('Цю команду можна використовувати тільки в групах.')
         return
@@ -146,7 +149,8 @@ async def list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if forms_data[chat_id]:
         message = "Привʼязані форми:\n"
         for (index, data) in enumerate(forms_data[chat_id].values()):
-            message += f"{index + 1}. https://docs.google.com/forms/d/{data['form_id']}/edit\n"
+            url = get_url_from_id(data['form_id'])
+            message += f"{index + 1}. {url}\n"
         await update.message.reply_text(message, link_preview_options=LinkPreviewOptions(is_disabled=True))
     else:
         await update.message.reply_text('До цієї групи ще не привʼязано жодної форми.')
@@ -170,7 +174,8 @@ async def connect(update: Update, context: ContextTypes.DEFAULT_TYPE):
         forms_data[chat_id] = {}
     forms_data[chat_id][form_id] = {'group_id': chat_id, 'form_id': form_id, 'sent_response_ids': load_sent_response_ids()}
     save_form_data(chat_id, chat_id, form_id, forms_data[chat_id][form_id]['sent_response_ids'])
-    await update.message.reply_text(f'Форма {form_id} привʼязана до групи {chat_id}.')
+    url = get_url_from_id(form_id)
+    await update.message.reply_text(f'Форма {url} привʼязана до групи {chat_id}.')
 
 
 async def delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -196,7 +201,8 @@ async def delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if form_id in data:
         delete_form_data(chat_id, form_id)
         del forms_data[chat_id][form_id]
-        await update.message.reply_text(f'Форма {form_id} видалена.')
+        url = get_url_from_id(form_id)
+        await update.message.reply_text(f'Форма {url} видалена.')
     else:
         await update.message.reply_text('Ця форма не привʼязана до групи.')
 
@@ -324,7 +330,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("connect", connect))
     application.add_handler(CommandHandler("delete", delete))
-    application.add_handler(CommandHandler("list", list))
+    application.add_handler(CommandHandler("list", list_forms))
     application.add_handler(CommandHandler("help", help))
     application.add_handler(CommandHandler("addtogroup", addtogroup))
 
