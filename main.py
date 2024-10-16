@@ -132,7 +132,9 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def addtogroup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.chat.type == 'private':
-        keyboard = [[InlineKeyboardButton(text='Додати бота в групу', url='t.me/AnswerTestFormsABot?startgroup=botstart')]]
+        bot_info = await bot.get_me()
+        bot_nickname = bot_info.username
+        keyboard = [[InlineKeyboardButton(text='Додати бота в групу', url=f't.me/{bot_nickname}?startgroup=botstart')]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text('Додай бота в групу та надішли там команду /start:', reply_markup=reply_markup)
     else:
