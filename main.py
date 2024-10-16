@@ -1,13 +1,13 @@
 import json
 import asyncio
+import re
 import requests
 import sqlite3
 from datetime import datetime, timezone
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from telegram import Update, Bot, BotCommand, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, Bot, BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, LinkPreviewOptions
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, filters, MessageHandler, CallbackQueryHandler
-import logging
 
 
 # Налаштування Google Forms API
@@ -41,6 +41,16 @@ forms_data = {}
 start_time = datetime.now(timezone.utc)
 
 
+def get_id_from_url(url):
+    pattern = r"forms/d/([a-zA-Z0-9_-]+)"
+    match = re.search(pattern, url)
+    print(f'URL: {url}, match: {match.group(1)}')
+    if match:
+        return match.group(1)
+    else:
+        return None
+
+
 def load_sent_response_ids():
     try:
         with open('response_ids.json', 'r') as file:
@@ -64,12 +74,10 @@ def get_group_name(group_id):
 async def set_commands(bot: Bot):
     commands = [
         BotCommand("start", "Привітання"),
-        BotCommand("connect", "Підключити форму до групи"),
-        BotCommand("select_groups", "Підключити форму до групи через вибір"),
-        BotCommand("delete", "Видалити підключену форму та групу"),
-        BotCommand("list", "Показати всі підключені форми"),
-        BotCommand("help", "Показати список команд"),
-        BotCommand("instruction", "Покроковий опис запуску Бота")
+        BotCommand("help", "Допомога"),
+        BotCommand("list", "Показати привʼязані форми"),
+        BotCommand("connect", "Привʼязати форму"),
+        BotCommand("delete", "Видалити привʼязану форму"),
     ]
     await bot.set_my_commands(commands)
 
@@ -106,154 +114,75 @@ def delete_form_data(chat_id, form_id=None):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.chat.type == 'private':
-        await update.message.reply_text('Привіт! Я бот для роботи з Google Forms. Використовуйте команду /connect для підключення форми.')
-
+        await update.message.reply_text('Привіт, я бот для роботи з Google Forms. Додай мене в групу за допомогою команди /connect.')
+    if update.message.chat.type == 'supergroup':
+        await update.message.reply_text('Привіт, надішліть посилання на форму у форматі /connect <url> (посилання має закінчуватись на /edit).')
 
 
 async def connect(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.chat.type == 'private':
-        chat_id = update.message.chat_id
-        if len(context.args) != 2:
-            await update.message.reply_text('Будь ласка, надайте groupid та formid у форматі: /connect groupid formid')
-            return
-        group_id, form_id = context.args
-        if chat_id not in forms_data:
-            forms_data[chat_id] = {}
-        forms_data[chat_id][form_id] = {'group_id': group_id, 'form_id': form_id, 'sent_response_ids': load_sent_response_ids()}
-        save_form_data(chat_id, group_id, form_id, forms_data[chat_id][form_id]['sent_response_ids'])
-        await update.message.reply_text(f'Форма {form_id} підключена до групи {group_id}.')
-
-
-
-
-
-#НЕВДАЛА СПРОБА СТВОРИТИ ПІД'ЄДНАННЯ ЧЕРЕЗ СПИСОК ВЖЕ НАЯВНИХ ГРУП -----------------------------------------------------
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levellevel)s - %(message)s', level=logging.INFO)
-
-
-async def check_user_in_group(bot, chat_id, user_id):
-    try:
-        member = await bot.get_chat_member(chat_id, user_id)
-        return member.status in ['member', 'administrator', 'creator']
-    except Exception as e:
-        logging.error(f"Error checking membership: {e}")
-        return False
-
-
-async def get_user_groups(user_id, bot):
-    user_groups = set()
-    bot_id = (await bot.get_me()).id
-
-    group_ids = [-1002013473991]  # перелік груп вручну прописується
-
-    for group_id in group_ids:
-        user_is_member = await check_user_in_group(bot, group_id, user_id)
-        bot_is_member = await check_user_in_group(bot, group_id, bot_id)
-
-        if user_is_member and bot_is_member:
-            user_groups.add(group_id)
-
-    return user_groups
-
-
-async def select_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.chat.type == 'private':
-        user_id = update.message.from_user.id
-        bot = context.bot
-        user_groups = await get_user_groups(user_id, bot)
-        if not user_groups:
-            await update.message.reply_text('Немає спільних груп з ботом.')
-            return
-
-        keyboard = [[InlineKeyboardButton(str(group_id), callback_data=f'select_group_{group_id}') for group_id in user_groups]]
+        keyboard = [[InlineKeyboardButton(text='Обрати групу', url='t.me/AnswerTestFormsABot?startgroup=botstart')]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text('Оберіть групу для підключення форми:', reply_markup=reply_markup)
+        await update.message.reply_text('Додай бота в групу та надішли там команду /start:', reply_markup=reply_markup)
 
-
-async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    logging.info(f"Button pressed: {query.data}")
-    if query.data.startswith('select_group_'):
-        group_id = query.data.split('_')[2]
-        context.user_data['selected_group_id'] = group_id
-        await query.edit_message_text(text=f'Оберіть групу: {group_id}\nТепер надішліть ID форми.')
-
-
-async def receive_form_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.chat.type == 'private' and 'selected_group_id' in context.user_data:
-        form_id = update.message.text
-        group_id = context.user_data['selected_group_id']
+    if update.message.chat.type == 'supergroup':
         chat_id = update.message.chat_id
+        if len(context.args) != 1:
+            await update.message.reply_text('Для привʼязки форми до групи надішли посилання на форму у форматі /connect <url> (посилання має закінчуватись на /edit).')
+            return
+        form_url = context.args[0]
+        if not form_url.endswith('/edit'):
+            await update.message.reply_text('Посилання має закінчуватись на /edit.')
+            return
+        form_id = get_id_from_url(form_url)
         if chat_id not in forms_data:
             forms_data[chat_id] = {}
-        forms_data[chat_id][form_id] = {'group_id': group_id, 'form_id': form_id, 'sent_response_ids': load_sent_response_ids()}
-        save_form_data(chat_id, group_id, form_id, forms_data[chat_id][form_id]['sent_response_ids'])
-        await update.message.reply_text(f'Форма {form_id} підключена до групи {group_id}.')
-        del context.user_data['selected_group_id']
+        forms_data[chat_id][form_id] = {'group_id': chat_id, 'form_id': form_id, 'sent_response_ids': load_sent_response_ids()}
+        save_form_data(chat_id, chat_id, form_id, forms_data[chat_id][form_id]['sent_response_ids'])
+        await update.message.reply_text(f'Форма {form_id} привʼязана до групи {chat_id}.')
 
 
-
-#----------------------------КІНЕЦЬ НЕВДАЛОЇ СПРОБИ---------------------------------------------------------------------
-
-
-async def instruction(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.chat.type == 'private':
-        await update.message.reply_text(
-            'Вітаю! Ви читаєте інструкцію використання та впровадження бота у роботу!'
-            '\nПередусім додайте бот у вашу групу і надайте йому права адміністратора.'
-            '\nДалі надішліть команду /connect у приватні повідомлення боту.'
-            '\nДля коректної роботи відбувається запит двох даних: GroupId та FormId через пробіл.   '
-            'GroupId можна отримати за допомогою іншого бота: @useridinfobot.'
-            'FormId можна отримати з вашої гугл форми. '
-            '\nНеобхідно кроки:'
-            '\n1) Відкрити редагування форми;'
-            '\n2) Знайти посилання вгорі, яке має вигляд: https://docs.google.com/forms/d/FormId/edit.'
-            '\n3) Скопіювати FormId між "/d/" та "/edit" та надішліть боту на відповідному кроці.')
+async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        '1. Для початку роботи додайте бота в групу.\n\n'
+        '2. В групі надішліть посилання на форму у форматі /connect <url> (посилання має закінчуватись на /edit).\n\n'
+        '3. 🎉 Після цього бот надсилатиме відповіді на форму в групу.')
 
 
 async def delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.chat.type == 'private':
-        chat_id = update.message.chat_id
-        data = load_form_data(chat_id)
-        if not data:
-            await update.message.reply_text('Немає підключених форм для видалення.')
-            return
+    chat_id = update.message.chat_id
+    if len(context.args) != 1:
+        await update.message.reply_text('Для видалення форми надішли посилання на форму у форматі /delete <url>.')
+        return
+    form_url = context.args[0]
+    if not form_url.endswith('/edit'):
+        await update.message.reply_text('Посилання має закінчуватись на /edit.')
+        return
+    form_id = get_id_from_url(form_url)
 
-        response_text = 'Підключені форми:\n'
-        for form_id, info in data.items():
-            response_text += f"Форма ID: {form_id}, Група: {get_group_name(info['group_id'])}\n"
-        response_text += '\nВведіть ID форми, яку ви хочете видалити:'
-        await update.message.reply_text(response_text)
-        context.user_data['delete_mode'] = True
+    data = load_form_data(chat_id)
+    if not data:
+        await update.message.reply_text('До цієї групи ще не привʼязано жодної форми.')
+        return
 
-
-async def handle_delete_form_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.chat.type == 'private' and context.user_data.get('delete_mode'):
-        form_id = update.message.text
-        chat_id = update.message.chat_id
-        data = load_form_data(chat_id)
-        if form_id in data:
-            delete_form_data(chat_id, form_id)
-            del forms_data[chat_id][form_id]
-            await update.message.reply_text(f'Форма з ID {form_id} видалена.')
-        else:
-            await update.message.reply_text('Форма з таким ID не знайдена.')
-        context.user_data['delete_mode'] = False
+    if form_id in data:
+        delete_form_data(chat_id, form_id)
+        del forms_data[chat_id][form_id]
+        await update.message.reply_text(f'Форма {form_id} видалена.')
+    else:
+        await update.message.reply_text('Ця форма не привʼязана до групи.')
 
 
 async def list_forms(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.chat.type == 'private':
-        chat_id = update.message.chat_id
-        forms_data[chat_id] = load_form_data(chat_id)
-        if forms_data[chat_id]:
-            message = "Ваші підключені форми:\n"
-            for data in forms_data[chat_id].values():
-                group_name = get_group_name(data['group_id'])
-                message += f"Група: {group_name}, Форма: {data['form_id']}\n"
-            await update.message.reply_text(message)
-        else:
-            await update.message.reply_text('Немає підключених форм.')
+    chat_id = update.message.chat_id
+    forms_data[chat_id] = load_form_data(chat_id)
+    if forms_data[chat_id]:
+        message = "Привʼязані форми:\n"
+        for (index, data) in enumerate(forms_data[chat_id].values()):
+            message += f"{index + 1}. https://docs.google.com/forms/d/{data['form_id']}/edit\n"
+        await update.message.reply_text(message, link_preview_options=LinkPreviewOptions(is_disabled=True))
+    else:
+        await update.message.reply_text('До цієї групи ще не привʼязано жодної форми.')
 
 
 def get_form_responses(form_id):
@@ -358,10 +287,6 @@ def format_response(response, questions):
     return formatted_response
 
 
-
-
-
-
 async def check_for_new_responses():
     while True:
         for chat_id, forms in forms_data.items():
@@ -382,17 +307,11 @@ if __name__ == '__main__':
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("connect", connect))
-    application.add_handler(CommandHandler("select_groups", select_groups))
     application.add_handler(CommandHandler("delete", delete))
     application.add_handler(CommandHandler("list", list_forms))
-    application.add_handler(CommandHandler("instruction", instruction))
-    application.add_handler(CallbackQueryHandler(button))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_delete_form_id))
+    application.add_handler(CommandHandler("help", help))
 
     loop = asyncio.get_event_loop()
     loop.create_task(check_for_new_responses())
     loop.run_until_complete(set_commands(bot))
     application.run_polling()
-
-
-
