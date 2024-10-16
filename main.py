@@ -75,6 +75,7 @@ async def set_commands(bot: Bot):
     commands = [
         BotCommand("start", "Привітання"),
         BotCommand("help", "Допомога"),
+        BotCommand("addtogroup", "Додати бота в групу"),
         BotCommand("list", "Показати привʼязані форми"),
         BotCommand("connect", "Привʼязати форму"),
         BotCommand("delete", "Видалити привʼязану форму"),
@@ -114,32 +115,39 @@ def delete_form_data(chat_id, form_id=None):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.chat.type == 'private':
-        await update.message.reply_text('Привіт, я бот для роботи з Google Forms. Додай мене в групу за допомогою команди /connect.')
+        await update.message.reply_text('Привіт, я бот для роботи з Google Forms. Додай мене в групу за допомогою команди /addtogroup.')
     if update.message.chat.type == 'supergroup':
         await update.message.reply_text('Привіт, надішліть посилання на форму у форматі /connect <url> (посилання має закінчуватись на /edit).')
 
 
-async def connect(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def addtogroup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.chat.type == 'private':
-        keyboard = [[InlineKeyboardButton(text='Обрати групу', url='t.me/AnswerTestFormsABot?startgroup=botstart')]]
+        keyboard = [[InlineKeyboardButton(text='Додати бота в групу', url='t.me/AnswerTestFormsABot?startgroup=botstart')]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text('Додай бота в групу та надішли там команду /start:', reply_markup=reply_markup)
+    else:
+        await update.message.reply_text('Цю команду можна використовувати тільки в особистих повідомленнях.')
 
-    if update.message.chat.type == 'supergroup':
-        chat_id = update.message.chat_id
-        if len(context.args) != 1:
-            await update.message.reply_text('Для привʼязки форми до групи надішли посилання на форму у форматі /connect <url> (посилання має закінчуватись на /edit).')
-            return
-        form_url = context.args[0]
-        if not form_url.endswith('/edit'):
-            await update.message.reply_text('Посилання має закінчуватись на /edit.')
-            return
-        form_id = get_id_from_url(form_url)
-        if chat_id not in forms_data:
-            forms_data[chat_id] = {}
-        forms_data[chat_id][form_id] = {'group_id': chat_id, 'form_id': form_id, 'sent_response_ids': load_sent_response_ids()}
-        save_form_data(chat_id, chat_id, form_id, forms_data[chat_id][form_id]['sent_response_ids'])
-        await update.message.reply_text(f'Форма {form_id} привʼязана до групи {chat_id}.')
+
+async def connect(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.chat.type == 'private':
+        await update.message.reply_text('Цю команду можна використовувати тільки в групах.')
+        return
+
+    chat_id = update.message.chat_id
+    if len(context.args) != 1:
+        await update.message.reply_text('Для привʼязки форми до групи надішли посилання на форму у форматі /connect <url> (посилання має закінчуватись на /edit).')
+        return
+    form_url = context.args[0]
+    if not form_url.endswith('/edit'):
+        await update.message.reply_text('Посилання має закінчуватись на /edit.')
+        return
+    form_id = get_id_from_url(form_url)
+    if chat_id not in forms_data:
+        forms_data[chat_id] = {}
+    forms_data[chat_id][form_id] = {'group_id': chat_id, 'form_id': form_id, 'sent_response_ids': load_sent_response_ids()}
+    save_form_data(chat_id, chat_id, form_id, forms_data[chat_id][form_id]['sent_response_ids'])
+    await update.message.reply_text(f'Форма {form_id} привʼязана до групи {chat_id}.')
 
 
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -318,6 +326,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler("delete", delete))
     application.add_handler(CommandHandler("list", list_forms))
     application.add_handler(CommandHandler("help", help))
+    application.add_handler(CommandHandler("addtogroup", addtogroup))
 
     loop = asyncio.get_event_loop()
     loop.create_task(check_for_new_responses())
