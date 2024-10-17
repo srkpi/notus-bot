@@ -31,3 +31,4 @@ jobs:
         tags: ${{ secrets.DOCKERHUB_USERNAME }}/notus:latest
         build-args: |
           BOT_TOKEN=${{ secrets.BOT_TOKEN }}
+          MONGO_URL=${{ secrets.MONGO_URL }}
